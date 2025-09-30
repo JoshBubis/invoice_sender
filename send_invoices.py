@@ -98,9 +98,12 @@ def find_invoice_path(account_number: str, invoices_dir: str, ext: str) -> Optio
 	return None
 
 
-def read_excel(excel_path: str) -> pd.DataFrame:
+def read_excel(excel_path: str, sheet_name: Optional[str] = None) -> pd.DataFrame:
 	try:
-		df = pd.read_excel(excel_path)
+		if sheet_name:
+			df = pd.read_excel(excel_path, sheet_name=sheet_name)
+		else:
+			df = pd.read_excel(excel_path)
 	except Exception as exc:
 		logging.error("Failed to read Excel '%s': %s", excel_path, exc)
 		raise
@@ -229,6 +232,7 @@ def process_invoices(
 	company_column_index: int = 0,
 	delay_between_emails: float = 1.0,
 	max_retries: int = 3,
+	sheet_name: Optional[str] = None,
 ) -> dict:
 	"""Run the invoice sending workflow and return a summary dict."""
 	if not os.path.isfile(excel_path):
@@ -236,7 +240,7 @@ def process_invoices(
 	if not os.path.isdir(invoices_dir):
 		raise FileNotFoundError(f"Invoices directory does not exist: {invoices_dir}")
 
-	df = read_excel(excel_path)
+	df = read_excel(excel_path, sheet_name=sheet_name)
 	processed = sent = skipped = missing_file = 0
 
 	for idx, row in df.iterrows():

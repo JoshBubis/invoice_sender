@@ -36,6 +36,7 @@ def main() -> None:
 
 	with st.expander("Paths and files", expanded=True):
 		excel_path = st.text_input("Excel file", value=os.getenv("UI_EXCEL", "data/accounts.xlsx"))
+		sheet_name = st.text_input("Excel sheet name (optional)", value=os.getenv("UI_SHEET", ""), help="Leave blank for first sheet, or specify sheet name like 'Combined'")
 		
 		# Invoices folder path with better instructions
 		st.write("**Invoices folder:**")
@@ -98,6 +99,7 @@ def main() -> None:
 					env_path,
 					{
 						"UI_EXCEL": excel_path,
+						"UI_SHEET": sheet_name,
 						"UI_INVOICES": invoices_dir,
 						"UI_EXT": ext,
 						"ACCOUNT_COLUMN": account_column_index,
@@ -147,6 +149,7 @@ def main() -> None:
 					account_column_index=account_column_index,
 					emails_column_index=emails_column_index,
 					company_column_index=company_column_index,
+					sheet_name=sheet_name if sheet_name else None,
 				)
 				st.info(f"Dry run complete: processed={result['processed']} missing_file={result['missing_file']}")
 			except Exception as exc:
@@ -172,6 +175,7 @@ def main() -> None:
 					account_column_index=account_column_index,
 					emails_column_index=emails_column_index,
 					company_column_index=company_column_index,
+					sheet_name=sheet_name if sheet_name else None,
 				)
 				st.success(
 					f"Send complete: processed={result['processed']} sent={result['sent']} skipped={result['skipped']} missing_file={result['missing_file']}"

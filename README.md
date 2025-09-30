@@ -88,6 +88,26 @@ streamlit run app.py --server.headless true
 - `12345_january_invoice.pdf` ✅
 - `67890_january_invoice.pdf` ✅
 
+## Excel Sheet Support
+
+**The system supports both single-sheet and multi-sheet Excel files:**
+
+### Single Sheet Excel (Testing):
+- **Sheet name field**: Leave blank
+- **System reads**: First/default sheet
+- **Example**: `data/accounts.xlsx` (no sheet name needed)
+
+### Multi-Sheet Excel (Production):
+- **Sheet name field**: Enter specific sheet name
+- **System reads**: Only the specified sheet
+- **Example**: Enter "Combined" to read the "Combined" tab
+
+### Benefits:
+- ✅ **Works with existing** single-sheet files
+- ✅ **Supports production** multi-tab workbooks
+- ✅ **No data copying** required
+- ✅ **Settings saved** for next time
+
 ## Platform-Specific Instructions
 
 ### Mac (Terminal):
@@ -132,6 +152,7 @@ streamlit run app.py --server.headless true
 2) **Open browser**: Go to `http://localhost:8501`
 3) **Configure paths**:
    - Excel file: `data/accounts.xlsx` (or your file)
+   - Excel sheet name: Leave blank for first sheet, or specify like "Combined"
    - Invoices folder: `invoices` (or your folder)
 4) **Set up email**:
    - From address: Your email
