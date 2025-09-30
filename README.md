@@ -195,4 +195,4 @@ streamlit run app.py --server.headless true
 - Custom domain provider:
   - Use their SMTP host/port with a mailbox that's allowed to send. Some providers require an app password or SMTP relay.
 
-If your jbubis@bestline.net account is O365 and SMTP AUTH is allowed, it will work. Otherwise, use a mailbox that permits SMTP (e.g., a domain email you control) or ask IT to enable SMTP AUTH or provide an SMTP relay.
+If your Office 365 account has SMTP AUTH enabled, it will work. Otherwise, use a mailbox that permits SMTP (e.g., a domain email you control) or ask IT to enable SMTP AUTH or provide an SMTP relay.
