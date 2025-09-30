@@ -108,7 +108,7 @@ def main() -> None:
 						"SMTP_HOST": smtp_host,
 						"SMTP_PORT": int(smtp_port),
 						"SMTP_USER": smtp_user,
-						"SMTP_PASSWORD": smtp_password,
+						# Note: SMTP_PASSWORD not saved for security
 						"SMTP_USE_TLS": bool(use_tls),
 						"EMAIL_FROM": from_addr,
 						"EMAIL_SUBJECT": subject,
