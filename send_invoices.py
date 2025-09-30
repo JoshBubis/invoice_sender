@@ -4,6 +4,7 @@ import argparse
 import logging
 import smtplib
 import ssl
+import time
 from typing import List, Optional, Tuple
 
 import pandas as pd
@@ -46,19 +47,28 @@ def load_env() -> None:
 	load_dotenv()
 
 
-def extract_five_digit_account(value: object) -> Optional[str]:
+def extract_five_digit_accounts(value: object) -> List[str]:
+	"""Extract all 5-digit account numbers from a cell that might contain multiple accounts."""
 	if value is None:
-		return None
+		return []
 	s = str(value).strip()
 	if not s:
-		return None
-	match = re.search(r"\b(\d{5})\b", s)
-	if match:
-		return match.group(1)
+		return []
+	
+	# Find all 5-digit numbers in the string (handles various separators)
+	matches = re.findall(r"\b(\d{5})\b", s)
+	if matches:
+		return matches
+	
+	# Fallback: extract digits and split into 5-digit chunks
 	digits_only = re.sub(r"\D", "", s)
-	if len(digits_only) == 5:
-		return digits_only
-	return None
+	accounts = []
+	for i in range(0, len(digits_only), 5):
+		chunk = digits_only[i:i+5]
+		if len(chunk) == 5:
+			accounts.append(chunk)
+	
+	return accounts
 
 
 def split_emails(raw: object) -> List[str]:
@@ -132,6 +142,8 @@ def send_email_with_attachment(
 	smtp_user: str,
 	smtp_password: str,
 	use_tls: bool,
+	max_retries: int = 3,
+	delay_between_emails: float = 1.0,
 ) -> None:
 	message = MIMEMultipart()
 	message["From"] = from_addr
@@ -144,20 +156,35 @@ def send_email_with_attachment(
 	part["Content-Disposition"] = f"attachment; filename=\"{os.path.basename(attachment_path)}\""
 	message.attach(part)
 
-	if use_tls:
-		context = ssl.create_default_context()
-		with smtplib.SMTP(smtp_host, smtp_port) as server:
-			server.ehlo()
-			server.starttls(context=context)
-			server.ehlo()
-			if smtp_user:
-				server.login(smtp_user, smtp_password)
-			server.sendmail(from_addr, to_addrs, message.as_string())
-	else:
-		with smtplib.SMTP(smtp_host, smtp_port) as server:
-			if smtp_user:
-				server.login(smtp_user, smtp_password)
-			server.sendmail(from_addr, to_addrs, message.as_string())
+	# Retry logic for rate limiting
+	for attempt in range(max_retries):
+		try:
+			if use_tls:
+				context = ssl.create_default_context()
+				with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+					server.ehlo()
+					server.starttls(context=context)
+					server.ehlo()
+					if smtp_user:
+						server.login(smtp_user, smtp_password)
+					server.sendmail(from_addr, to_addrs, message.as_string())
+			else:
+				with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+					if smtp_user:
+						server.login(smtp_user, smtp_password)
+					server.sendmail(from_addr, to_addrs, message.as_string())
+			
+			# Success - add delay to avoid rate limiting
+			time.sleep(delay_between_emails)
+			return
+			
+		except (smtplib.SMTPException, ConnectionError, OSError) as e:
+			if attempt < max_retries - 1:
+				wait_time = (2 ** attempt) * delay_between_emails  # Exponential backoff
+				logging.warning(f"Email send failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {wait_time:.1f}s...")
+				time.sleep(wait_time)
+			else:
+				raise e
 
 
 def smtp_test(smtp_host: str, smtp_port: int, smtp_user: str, smtp_password: str, use_tls: bool) -> Tuple[bool, str]:
@@ -200,6 +227,8 @@ def process_invoices(
 	account_column_index: int = 1,
 	emails_column_index: int = 6,
 	company_column_index: int = 0,
+	delay_between_emails: float = 1.0,
+	max_retries: int = 3,
 ) -> dict:
 	"""Run the invoice sending workflow and return a summary dict."""
 	if not os.path.isfile(excel_path):
@@ -216,47 +245,64 @@ def process_invoices(
 		raw_account = get_cell_value(row, df.columns, account_column_name, account_column_index)
 		raw_emails = get_cell_value(row, df.columns, emails_column_name, emails_column_index)
 
-		account = extract_five_digit_account(raw_account)
+		accounts = extract_five_digit_accounts(raw_account)
 		recipients = split_emails(raw_emails)
 
-		if not account:
+		if not accounts:
 			logging.warning("Row %s: missing/invalid account number; skipping", idx + 1)
 			skipped += 1
 			continue
 		if not recipients:
-			logging.warning("Row %s (acct %s): no recipient emails; skipping", idx + 1, account)
+			logging.warning("Row %s (accts %s): no recipient emails; skipping", idx + 1, ", ".join(accounts))
 			skipped += 1
 			continue
 
-		invoice_path = find_invoice_path(account, invoices_dir, ext)
-		if not invoice_path:
-			logging.warning("Row %s (acct %s): no invoice found in %s", idx + 1, account, invoices_dir)
-			missing_file += 1
-			continue
+		# Process each account number for this row
+		row_sent = 0
+		for account in accounts:
+			invoice_path = find_invoice_path(account, invoices_dir, ext)
+			if not invoice_path:
+				logging.warning("Row %s (acct %s): no invoice found in %s", idx + 1, account, invoices_dir)
+				missing_file += 1
+				continue
 
-		descriptor = f"acct {account}{' - ' + str(company) if pd.notna(company) else ''}".strip()
-		if dry_run:
-			logging.info("DRY RUN would send %s to %s with attachment %s", descriptor, ", ".join(recipients), os.path.basename(invoice_path))
-			continue
+			descriptor = f"account {account}"
+			if dry_run:
+				# Show personalized email content in dry run
+				personalized_subject = subject.replace("%ACCOUNT%", account)
+				personalized_body = body.replace("%ACCOUNT%", account)
+				logging.info("DRY RUN would send %s to %s", descriptor, ", ".join(recipients))
+				logging.info("  Subject: %s", personalized_subject)
+				logging.info("  Body: %s", personalized_body)
+				logging.info("  Attachment: %s", os.path.basename(invoice_path))
+				continue
 
-		try:
-			send_email_with_attachment(
-				from_addr=from_addr,
-				to_addrs=recipients,
-				subject=subject,
-				body=body,
-				attachment_path=invoice_path,
-				smtp_host=smtp_host,
-				smtp_port=smtp_port,
-				smtp_user=smtp_user,
-				smtp_password=smtp_password,
-				use_tls=use_tls,
-			)
-			sent += 1
-			logging.info("Sent %s to %s", descriptor, ", ".join(recipients))
-		except Exception as exc:
-			logging.error("Failed sending %s: %s", descriptor, exc)
-			skipped += 1
+			try:
+				# Replace %ACCOUNT% placeholder with actual account number
+				personalized_subject = subject.replace("%ACCOUNT%", account)
+				personalized_body = body.replace("%ACCOUNT%", account)
+				
+				send_email_with_attachment(
+					from_addr=from_addr,
+					to_addrs=recipients,
+					subject=personalized_subject,
+					body=personalized_body,
+					attachment_path=invoice_path,
+					smtp_host=smtp_host,
+					smtp_port=smtp_port,
+					smtp_user=smtp_user,
+					smtp_password=smtp_password,
+					use_tls=use_tls,
+					delay_between_emails=delay_between_emails,
+					max_retries=max_retries,
+				)
+				row_sent += 1
+				logging.info("Sent %s to %s", descriptor, ", ".join(recipients))
+			except Exception as exc:
+				logging.error("Failed sending %s: %s", descriptor, exc)
+				skipped += 1
+		
+		sent += row_sent
 
 	return {
 		"processed": processed,
@@ -271,8 +317,8 @@ def main() -> None:
 	configure_logging(args.verbose)
 	load_env()
 
-	subject_default = os.getenv("EMAIL_SUBJECT", "Your Monthly Invoice")
-	body_default = os.getenv("EMAIL_BODY", "Hello,\n\nPlease find your monthly invoice attached.\n\nThank you.")
+	subject_default = os.getenv("EMAIL_SUBJECT", "Your Invoice")
+	body_default = os.getenv("EMAIL_BODY", "Here is the invoice for account %ACCOUNT%.\n\nThank you.")
 	from_default = os.getenv("EMAIL_FROM") or os.getenv("SMTP_USER", "")
 
 	subject = args.subject or subject_default
