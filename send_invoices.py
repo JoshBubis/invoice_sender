@@ -269,8 +269,8 @@ def process_invoices(
 			descriptor = f"account {account}"
 			if dry_run:
 				# Show personalized email content in dry run
-				personalized_subject = subject.replace("%ACCOUNT%", account)
-				personalized_body = body.replace("%ACCOUNT%", account)
+				personalized_subject = subject.replace("%ACCOUNT%", account).replace("%COMPANY%", company or "")
+				personalized_body = body.replace("%ACCOUNT%", account).replace("%COMPANY%", company or "")
 				logging.info("DRY RUN would send %s to %s", descriptor, ", ".join(recipients))
 				logging.info("  Subject: %s", personalized_subject)
 				logging.info("  Body: %s", personalized_body)
@@ -278,9 +278,9 @@ def process_invoices(
 				continue
 
 			try:
-				# Replace %ACCOUNT% placeholder with actual account number
-				personalized_subject = subject.replace("%ACCOUNT%", account)
-				personalized_body = body.replace("%ACCOUNT%", account)
+				# Replace placeholders with actual values
+				personalized_subject = subject.replace("%ACCOUNT%", account).replace("%COMPANY%", company or "")
+				personalized_body = body.replace("%ACCOUNT%", account).replace("%COMPANY%", company or "")
 				
 				send_email_with_attachment(
 					from_addr=from_addr,

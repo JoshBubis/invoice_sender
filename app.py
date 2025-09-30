@@ -64,7 +64,7 @@ def main() -> None:
 
 	with st.expander("Email settings", expanded=True):
 		default_subject = os.getenv("EMAIL_SUBJECT", "Your Invoice")
-		default_body = os.getenv("EMAIL_BODY", "Here is the invoice for account %ACCOUNT%.\n\nThank you.")
+		default_body = os.getenv("EMAIL_BODY", "Hello %COMPANY%,\n\nHere is the invoice for account %ACCOUNT%.\n\nThank you.")
 		default_from = os.getenv("EMAIL_FROM") or os.getenv("SMTP_USER", "")
 
 		from_addr = st.text_input("From address", value=default_from)
